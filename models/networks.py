@@ -1,10 +1,11 @@
+from turtle import forward
 import torch
 import torch.nn as nn
 from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
-
-
+from idinvert_pytorch.models.stylegan_encoder_network import StyleGANEncoderNet
+from StyleGan2.model import Generator,Encoder,Discriminator
 ###############################################################################
 # Helper Functions
 ###############################################################################
@@ -117,7 +118,7 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_G(opt,input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
     """Create a generator
 
     Parameters:
@@ -130,6 +131,10 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         init_type (str)    -- the name of our initialization method.
         init_gain (float)  -- scaling factor for normal, xavier and orthogonal.
         gpu_ids (int list) -- which GPUs the network runs on: e.g., 0,1,2
+        opt.size (int) -- size of the image
+        opt.latend_dim (int) -- size of the latent vector
+        opt.n_mlp (int) -- number of layers in the MLP
+        opt.netE (str) -- the architecture's name: style | identity
 
     Returns a generator
 
@@ -146,7 +151,6 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     """
     net = None
     norm_layer = get_norm_layer(norm_type=norm)
-
     if netG == 'resnet_9blocks':
         net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
     elif netG == 'resnet_6blocks':
@@ -155,12 +159,14 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
         net = UnetGenerator(input_nc, output_nc, 7, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
+    elif netG == 'StyleGAN':
+        net = StyleGANGenerator(opt.crop_size,opt.latent_dim,opt.n_mlp,opt.netE,opt.channel_multiplier.opt.which_phi_e)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
 
 
-def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[]):
+def define_D(opt,input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal', init_gain=0.02, gpu_ids=[]):
     """Create a discriminator
 
     Parameters:
@@ -199,6 +205,8 @@ def define_D(input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='normal'
         net = NLayerDiscriminator(input_nc, ndf, n_layers_D, norm_layer=norm_layer)
     elif netD == 'pixel':     # classify if each pixel is real or fake
         net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer)
+    elif netD =='StyleGAN':
+        net = StyleGANDiscriminator(opt.crop_size,opt.latent_dim,opt.n_mlp,opt.netE,opt.channel_multiplier,opt.which_phi_d)
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' % netD)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -614,3 +622,55 @@ class PixelDiscriminator(nn.Module):
     def forward(self, input):
         """Standard forward."""
         return self.net(input)
+
+
+class StyleGANGenerator(nn.Module):
+    def __init__(self,size,latent_dim,n_mlp,netE,channel_multiplier,which_phi_e):
+        super(StyleGANGenerator,self).__init__()
+        
+        if netE == 'idinvert':
+            self.encoder = StyleGANEncoderNet(resolution=size, w_space_dim=latent_dim,which_latent='w_plus')
+        else:
+            self.encoder = Encoder(size, latent_dim, channel_multiplier=channel_multiplier,which_latent='w_plus',which_phi=which_phi_e)
+            
+        self.generator = Generator(size,latent_dim,n_mlp,channel_multiplier=channel_multiplier)
+        
+    def forward(self,input):
+        encoder_vec, _ = self.encoder(input)
+        # print(encoder_vec.shape)
+        # 1,7168
+        output,_ = self.generator([encoder_vec],input_is_latent=True)
+        return output
+    
+class StyleGANDiscriminator(nn.Module):
+    def __init__(self,size, channel_multiplier, which_phi_d):
+        super(StyleGANDiscriminator,self).__init__()
+        
+        self.model = Discriminator(size, channel_multiplier=channel_multiplier,which_phi=which_phi_d)
+    
+    def forward(self,input):
+        return self.model(input)
+
+
+
+
+if __name__ == '__main__':
+    norm_layer = get_norm_layer(norm_type='batch')
+    generator1 = ResnetGenerator(3, 3, 64, norm_layer=norm_layer, use_dropout=False, n_blocks=9)
+    dis1 =  NLayerDiscriminator(3, 64, n_layers=3, norm_layer=norm_layer)
+    
+    generator2 = StyleGANGenerator(256,512,8,'style',2,'lin2')
+    dis2 = StyleGANDiscriminator(256,2,'lin2')
+    
+    x = torch.randn(1,3,256,256)
+    
+    y1 = generator1(x)
+    y2 = generator2(x)
+    
+    d1 = dis1(y1)
+    d2 = dis2(y2)
+    
+    print(y1.shape,d1.shape)
+    
+    print(y2.shape,d2.shape)
+    
