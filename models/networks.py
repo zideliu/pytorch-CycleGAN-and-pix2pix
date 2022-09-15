@@ -160,7 +160,7 @@ def define_G(opt,input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False
     elif netG == 'unet_256':
         net = UnetGenerator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout=use_dropout)
     elif netG == 'StyleGAN':
-        net = StyleGANGenerator(opt.crop_size,opt.latent_dim,opt.n_mlp,opt.netE,opt.channel_multiplier.opt.which_phi_e)
+        net = StyleGANGenerator(opt.crop_size,opt.latent_dim,opt.n_mlp,opt.netE,opt.channel_multiplier,opt.which_phi_e)
     else:
         raise NotImplementedError('Generator model name [%s] is not recognized' % netG)
     return init_net(net, init_type, init_gain, gpu_ids)
@@ -206,7 +206,7 @@ def define_D(opt,input_nc, ndf, netD, n_layers_D=3, norm='batch', init_type='nor
     elif netD == 'pixel':     # classify if each pixel is real or fake
         net = PixelDiscriminator(input_nc, ndf, norm_layer=norm_layer)
     elif netD =='StyleGAN':
-        net = StyleGANDiscriminator(opt.crop_size,opt.latent_dim,opt.n_mlp,opt.netE,opt.channel_multiplier,opt.which_phi_d)
+        net = StyleGANDiscriminator(opt.crop_size,opt.channel_multiplier,opt.which_phi_d)
     else:
         raise NotImplementedError('Discriminator model name [%s] is not recognized' % netD)
     return init_net(net, init_type, init_gain, gpu_ids)

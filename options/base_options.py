@@ -43,7 +43,7 @@ class BaseOptions():
         parser.add_argument('--latent_dim', type=int, default=512, help='dimension of the latent code')
         parser.add_argument('--n_mlp', type=int, default=8, help='number of MLP layers')
         parser.add_argument('--channel_multiplier', type=int, default=2, help='channel multiplier')
-        parser.add_argument('netE',type=str,default='style')
+        parser.add_argument('--netE',type=str,default='style')
         parser.add_argument("--which_phi_e", type=str, default='lin2')
         parser.add_argument("--which_phi_d", type=str, default='lin2')
         # dataset parameters
